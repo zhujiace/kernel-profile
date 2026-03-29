@@ -26,8 +26,8 @@ def eval_eff(executable_path, draw_flag, label=""):
         "smsp__sass_thread_inst_executed_op_dadd_pred_on.sum.per_cycle_elapsed",
         "smsp__sass_thread_inst_executed_op_dmul_pred_on.sum.per_cycle_elapsed",
         "smsp__sass_thread_inst_executed_op_dfma_pred_on.sum.per_cycle_elapsed",
-        "smsp__cycles_elapsed.avg.per_second",
-        "sm__sass_average_data_bytes_per_sector_mem_global_op_ld.pct"
+        "smsp__cycles_elapsed.avg.per_second"
+        # "sm__sass_average_data_bytes_per_sector_mem_global_op_ld.pct"
     ]
     metrics = ",".join(metric)
 
@@ -53,7 +53,7 @@ def eval_eff(executable_path, draw_flag, label=""):
         # 执行 ncu 性能分析命令
         ncu_command = ['ncu', '--metrics', metrics, '--csv', executable_path]
         env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = "3"
+        env["CUDA_VISIBLE_DEVICES"] = "0"
         
         try:
             with open(csv_output_path, 'w') as output_file:
@@ -106,7 +106,30 @@ def eval_eff(executable_path, draw_flag, label=""):
 
         dfmetric['AI DRAM'] = raw_flops_per_sec.div(dfmetric['dram__bytes.sum.per_second'].div(dfmetric['Count']))
 
-        return dfmetric['GFLOP/s'].item(), dfmetric['AI DRAM'].item()
+        flops = dfmetric['GFLOP/s'].item()
+        peak_work = dfmetric['PeakWork'].item() / 1e9
+        ai_dram = dfmetric['AI DRAM'].item()
+        peak_traffic = dfmetric['PeakTraffic'].item()
+
+        bandwidth_utilization = (
+            dfmetric['dram__bytes.sum.per_second']
+            .div(dfmetric['Count'])
+            .item()
+            / dfmetric['PeakTraffic'].item()
+        )
+
+
+        EPSILON = 1e-9
+
+        if abs(flops) < EPSILON:
+            compute_efficiency = 0.0
+            score = bandwidth_utilization
+        else:
+            compute_efficiency = flops / peak_work
+            roofline_limit = min(peak_work, ai_dram * peak_traffic / 1e9)
+            score = flops / roofline_limit
+
+        return flops, roofline_limit, ai_dram, peak_traffic, score
         
     except Exception as e:
         print(f"[Error] Failed to process CSV: {e}")
@@ -174,29 +197,29 @@ def run_test_in_folder(target_folder, executable_name=None):
                 return
 
         # 3. 处理执行文件路径前缀
-        # 在 Linux 下运行当前目录文件通常需要 ./ 前缀
         if not executable_name.startswith('./') and not executable_name.startswith('/'):
             run_cmd = f"./{executable_name}"
         else:
             run_cmd = executable_name
 
         # 检查最终要运行的文件是否存在
-        if not os.path.isfile(executable_name): # 注意：这里用不带 ./ 的名字检查文件是否存在
+        if not os.path.isfile(executable_name):
              print(f"[Error] Executable '{executable_name}' not found in {abs_target_folder}")
              return
 
         print(f"\n[Execute] Target: {run_cmd}")
         
         # 4. 调用 eval_eff 进行性能分析
-        # 注意：你需要把之前 eval_eff 的完整代码放进来才能运行
-        # 这里假设 eval_eff 已经定义好了
         result = eval_eff(run_cmd, draw_flag=False, label="auto_")
         
         if result:
-            flops, ai = result
+            flops, peak_work, ai, peak_traffic, score = result
             print(f"\n=== Result for {executable_name} ===")
-            print(f"FLOP/s  : {flops:.4e} GFlops/s")
-            print(f"AI DRAM : {ai:.4f}")
+            print(f"FLOP/s      : {flops:.4e} GFlops/s")
+            print(f"Peak FLOP/s : {peak_work:.4e} GFlops/s")
+            print(f"AI DRAM     : {ai:.4f}")
+            print(f"Peak Traffic: {peak_traffic:.4f}")
+            print(f"Score       : {score:.4f}")
         else:
             print("\n=== Result: Failed to calculate metrics ===")
 
@@ -215,7 +238,6 @@ if __name__ == "__main__":
     parser.add_argument("folder", help="The folder containing the code/data.")
     
     # 参数 2: 可执行文件名 (可选)
-    # nargs='?' 表示该参数是可选的。如果没提供，args.executable 为 None
     parser.add_argument("executable", nargs='?', help="Executable name. If omitted, attempts to compile 'bench.cu' and run 'gen.py'.")
     
     args = parser.parse_args()

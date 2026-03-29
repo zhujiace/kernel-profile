@@ -145,7 +145,7 @@ int main() {
     cudaMemcpy(&h_sum, d_sum, sizeof(float), cudaMemcpyDeviceToHost);
     float mse = h_sum / N;
 
-    std::cout << "MSE: " << mse << std::endl;
+    // std::cout << "MSE: " << mse << std::endl;
 
     // write_binary("data/mse_out.bin", &mse, 1);
 

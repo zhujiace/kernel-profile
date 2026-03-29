@@ -18,7 +18,7 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 # 尝试运行
 ```bash
-cd 7_1_op
+cd 7_1
 python gen.py
 nvcc -o bench bench.cu
 ./bench
@@ -29,12 +29,12 @@ ncu -o bench ./bench
 # 运行
 ```bash
 cd ..
-python ./test.py 7_1_op bench
-python ./test.py 7_1
+python ./test.py 7_1 bench
+python ./test.py 7_1_op
 python ./test.py 5_1
 ```
 
-# 
+# 如果ncu不可用
 ```bash
 echo 'options nvidia "NVreg_RestrictProfilingToAdminUsers=0"' | sudo tee /etc/modprobe.d/nvidia-profiler.conf
 sudo reboot
